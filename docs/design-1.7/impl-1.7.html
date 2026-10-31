@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>茄子快门 1.7.0 实现预览</title>
+<style>
+:root{
+  --bg:#08090C; --bg-top:#101318; --glow:#16303A;
+  --label:#F5F7FA; --label2:#9AA2AE; --label3:#5F6773;
+  --accent:#38E1F2; --accent-dim:#1FA8B8;
+  --edge:rgba(255,255,255,.14); --card:rgba(255,255,255,.075);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#05060a; color:var(--label);
+  font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+  padding:36px 24px 60px; display:flex; flex-direction:column; align-items:center; gap:34px;
+}
+.hd{text-align:center}
+.hd h1{font-size:19px;font-weight:600;letter-spacing:.02em}
+.hd p{font-size:12px;color:var(--label3);margin-top:6px}
+.row{display:flex;gap:26px;flex-wrap:wrap;justify-content:center}
+figure{display:flex;flex-direction:column;gap:10px;align-items:center}
+figcaption{font-size:11px;color:var(--label3);letter-spacing:.06em}
+
+/* ---------- 手机框 ---------- */
+.phone{
+  position:relative;width:320px;height:640px;border-radius:34px;overflow:hidden;
+  background:
+    radial-gradient(circle 300px at 82% 8%, rgba(22,48,58,.40), transparent 70%),
+    linear-gradient(180deg,transparent 55%, rgba(0,0,0,.30)),
+    var(--bg);
+  border:1px solid rgba(255,255,255,.07);
+  box-shadow:0 24px 60px -20px #000;
+}
+.status{height:26px;display:flex;justify-content:space-between;align-items:center;padding:0 18px;font-size:10px;color:#8890a0}
+
+/* ---------- 玻璃卡 ---------- */
+.glass{
+  background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.02));
+  border:1px solid var(--edge); border-radius:22px;
+}
+
+/* ---------- 曲线页 ---------- */
+.curve-wrap{padding:0 14px;display:flex;flex-direction:column;gap:6px;height:calc(640px - 26px)}
+.curve-hd{padding:14px 0;text-align:center;margin-top:8px}
+.curve-hd h2{font-size:26px;font-weight:700;letter-spacing:-.01em}
+.curve-hd span{display:block;font-size:12px;color:var(--accent);letter-spacing:.06em;margin-top:3px}
+.chart-card{flex:1;position:relative;padding:10px;display:flex;flex-direction:column}
+.chart-card svg{flex:1;width:100%}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:var(--label3);padding:0 10px 4px;letter-spacing:.04em}
+
+/* ---------- 参数 pill ---------- */
+.pill{
+  display:flex;align-items:center;border-radius:100px;padding:10px 0;
+  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.13);margin:0 2px;
+}
+.pill div{flex:1;text-align:center}
+.pill b{display:block;font-size:18px;font-weight:600}
+.pill i{display:block;font-size:10px;color:var(--label3);font-style:normal;margin-top:2px;letter-spacing:.05em}
+
+/* ---------- 快门 ---------- */
+.shutter-zone{display:flex;justify-content:center;padding:4px 0 10px;flex:0 0 auto}
+.curve-wrap{overflow:hidden}
+.shutter{position:relative;width:200px;height:200px}
+.shutter .ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:1px solid rgba(255,255,255,.10);
+}
+.shutter .arc{
+  position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from -20deg,
+    rgba(56,225,242,0) 0deg, rgba(56,225,242,0) 200deg,
+    rgba(234,253,255,1) 250deg, rgba(56,225,242,1) 285deg,
+    rgba(56,225,242,0) 310deg, rgba(56,225,242,0) 360deg);
+  -webkit-mask:radial-gradient(circle, transparent 95px, #000 96px, #000 100px, transparent 101px);
+          mask:radial-gradient(circle, transparent 95px, #000 96px, #000 100px, transparent 101px);
+  filter:drop-shadow(0 0 7px rgba(56,225,242,.75));
+}
+/* 8 片光圈叶片：每片一个受光边 + 暗分缝 */
+.blades{position:absolute;left:50%;top:50%;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;overflow:hidden;
+  box-shadow:inset 0 0 18px rgba(0,0,0,.55);}
+.blades i{position:absolute;
+  background:#27AEBE;
+  border-left:2px solid rgba(0,0,0,.55);
+  box-shadow:inset 2px 0 0 rgba(255,255,255,.35);}
+.blades .disc{position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle at 50% 42%, rgba(255,255,255,.25), rgba(255,255,255,.07) 42%, transparent 72%, rgba(0,0,0,.35) 100%);}
+
+/* ---------- 底部弹窗 ---------- */
+.sheet-scrim{position:absolute;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:flex-end}
+.sheet{
+  width:100%;border-radius:28px 28px 0 0;padding:10px 0 16px;
+  background:linear-gradient(180deg,#22262E,#14161C 55%,#0E1015);
+  border:1px solid rgba(255,255,255,.16);border-bottom:none;
+  box-shadow:0 -20px 50px -20px #000;
+}
+.sheet .grab{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.20);margin:0 auto}
+.sheet .cap{text-align:center;font-size:13px;color:var(--label3);letter-spacing:.08em;margin:12px 0 4px}
+.wheel{position:relative;height:240px}
+.wheel .hi{
+  position:absolute;left:18px;right:18px;top:50%;height:46px;margin-top:-23px;border-radius:14px;
+  background:rgba(56,225,242,.12);border:1px solid rgba(56,225,242,.20);
+}
+.wheel ul{position:absolute;inset:0;list-style:none;display:flex;flex-direction:column;justify-content:center;gap:0}
+.wheel li{height:48px;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--label3)}
+.wheel li.sel{color:var(--label);font-weight:600}
+.wheel .fade{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(19,21,25,.92) 0%,transparent 26%,transparent 74%,rgba(15,17,21,.92) 100%)}
+.sheet .line{height:1px;background:rgba(255,255,255,.10);margin:0 18px}
+.sheet .acts{display:flex;height:56px;margin:0 10px 6px}
+.sheet .acts button{flex:1;background:none;border:none;font-size:16px;font-family:inherit;cursor:pointer}
+.sheet .acts .no{color:var(--label2)}
+.sheet .acts .ok{color:var(--accent);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="hd">
+  <h1>茄子快门 1.7.0 · 实现对照</h1>
+  <p>下面三屏是按代码里的真实参数画的：环 2.5dp / 半径 98.5dp，叶片盘 62dp，卡片圆角 22dp，弹窗圆角 28dp</p>
+</div>
+
+<div class="row">
+
+<!-- ============ 曲线页 ============ -->
+<figure>
+<div class="phone">
+  <div class="status"><span>22:41</span><span>◍ ⌁ ▮</span></div>
+  <div class="curve-wrap">
+    <div class="glass curve-hd">
+      <h2>曲线摄影</h2>
+      <span>B 门延时</span>
+    </div>
+
+    <div class="glass chart-card">
+      <svg viewBox="0 0 272 190" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#38E1F2" stop-opacity=".22"/>
+            <stop offset="100%" stop-color="#38E1F2" stop-opacity="0"/>
+          </linearGradient>
+          <filter id="neo" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- 细栅格 -->
+        <g stroke="#38E1F2" stroke-opacity=".16" stroke-width="1">
+          <path d="M0 0 V190 M45 0 V190 M90 0 V190 M135 0 V190 M181 0 V190 M226 0 V190 M272 0 V190"/>
+          <path d="M0 0 H272 M0 38 H272 M0 76 H272 M0 114 H272 M0 152 H272 M0 189 H272"/>
+        </g>
+        <rect x="0" y="0" width="272" height="190" fill="none" stroke="#38E1F2" stroke-opacity=".30" stroke-width="1.5"/>
+        <!-- 面积 -->
+        <path d="M0 172 C40 168 66 140 96 118 C126 96 152 62 190 46 C222 33 250 28 272 25 L272 190 L0 190 Z" fill="url(#fill)"/>
+        <!-- 未曝光段（半透明白） -->
+        <path d="M0 172 C40 168 66 140 96 118" fill="none" stroke="#F5F7FA" stroke-opacity=".40" stroke-width="2"/>
+        <!-- 已曝光段（霓虹青 + 辉光） -->
+        <path d="M96 118 C126 96 152 62 190 46" fill="none" stroke="#38E1F2" stroke-width="5" stroke-linecap="round" filter="url(#neo)"/>
+        <!-- 未来段 -->
+        <path d="M190 46 C222 33 250 28 272 25" fill="none" stroke="#F5F7FA" stroke-opacity=".40" stroke-width="2"/>
+        <circle cx="190" cy="46" r="4" fill="#0A1114" stroke="#38E1F2" stroke-width="2.5"/>
+      </svg>
+      <div class="axis"><span>00:00:00</span><span>02:00:00</span></div>
+    </div>
+
+    <div class="pill">
+      <div><b>02:00:00</b><i>拍摄时长</i></div>
+      <div><b>00:25:00</b><i>已用</i></div>
+      <div><b>01:35:00</b><i>剩余</i></div>
+    </div>
+
+    <div class="shutter-zone">
+      <div class="shutter">
+        <div class="ring"></div>
+        <div class="arc"></div>
+        <div class="blades">
+          <i style="left:50.1px;top:-43.4px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-17deg)"></i>
+          <i style="left:-24.4px;top:-12.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-62deg)"></i>
+          <i style="left:-55.3px;top:62.0px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-107deg)"></i>
+          <i style="left:-24.4px;top:136.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-152deg)"></i>
+          <i style="left:50.1px;top:167.4px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-197deg)"></i>
+          <i style="left:124.7px;top:136.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-242deg)"></i>
+          <i style="left:155.5px;top:62.0px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-287deg)"></i>
+          <i style="left:124.7px;top:-12.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-332deg)"></i>
+          <div class="disc"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption>曲线页 · 拍摄中</figcaption>
+</figure>
+
+<!-- ============ 快门特写 ============ -->
+<figure>
+<div class="phone" style="display:flex;align-items:center;justify-content:center">
+  <div class="shutter" style="transform:scale(1.5)">
+    <div class="ring"></div>
+    <div class="arc"></div>
+    <div class="blades">
+      <i style="left:50.1px;top:-43.4px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-17deg)"></i>
+      <i style="left:-24.4px;top:-12.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-62deg)"></i>
+      <i style="left:-55.3px;top:62.0px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-107deg)"></i>
+      <i style="left:-24.4px;top:136.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-152deg)"></i>
+      <i style="left:50.1px;top:167.4px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-197deg)"></i>
+      <i style="left:124.7px;top:136.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-242deg)"></i>
+      <i style="left:155.5px;top:62.0px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-287deg)"></i>
+      <i style="left:124.7px;top:-12.5px;width:88.6px;height:110.6px;transform-origin:11.9px 0;transform:rotate(-332deg)"></i>
+      <div class="disc"></div>
+    </div>
+  </div>
+</div>
+<figcaption>快门特写 · 环 + 叶片高光</figcaption>
+</figure>
+
+<!-- ============ 底部弹窗 ============ -->
+<figure>
+<div class="phone">
+  <div class="status"><span>22:41</span><span>◍ ⌁ ▮</span></div>
+  <div class="curve-wrap" style="padding-top:14px">
+    <div class="glass curve-hd"><h2>延时摄影</h2><span>INTERVAL</span></div>
+    <div class="glass" style="padding:0 18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;height:60px;border-bottom:1px solid rgba(255,255,255,.10)">
+        <span style="font-size:15px;color:var(--label2)">间隔时间</span>
+        <span style="font-size:22px;font-weight:600">00:00:<span style="color:var(--accent)">05</span></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;height:60px">
+        <span style="font-size:15px;color:var(--label2)">拍摄次数</span>
+        <span style="font-size:22px;font-weight:600">600</span>
+      </div>
+    </div>
+  </div>
+  <div class="sheet-scrim">
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="cap">秒</div>
+      <div class="wheel">
+        <div class="hi"></div>
+        <ul>
+          <li>3</li><li>4</li><li class="sel">5</li><li>6</li><li>7</li>
+        </ul>
+        <div class="fade"></div>
+      </div>
+      <div class="line"></div>
+      <div class="acts"><button class="no">取消</button><button class="ok">确定</button></div>
+    </div>
+  </div>
+</div>
+<figcaption>滚轮 · 底部玻璃弹窗</figcaption>
+</figure>
+
+</div>
+</body>
+</html>
